@@ -16,9 +16,9 @@ pipeline {
         stage('Build & Test') {
             steps {
                 echo 'Lancement du conteneur Python pour les tests...'
-                // On utilise bat 'docker run' au lieu du plugin agent docker qui bugue
+                // Correction du chemin : Test au lieu de tests
                 bat """
-                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install -r app/requirements.txt pytest && pytest tests/ -v"
+                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install -r app/requirements.txt pytest && pytest Test/test.app.py -v"
                 """
             }
         }
@@ -26,8 +26,9 @@ pipeline {
         stage('SAST - Bandit Security Scan') {
             steps {
                 echo 'Analyse de securite statique (SAST) via Docker...'
+                // Bandit va scanner le dossier 'app' qui contient tes vulnérabilités (SQLi, XSS, Secret)
                 bat """
-                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install bandit && bandit -r app/ -f json -o bandit-report.json || true && bandit -r app/ || true"
+                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install bandit && bandit -r app/ -f json -o bandit-report.json || true && bandit -r app/"
                 """
             }
             post {
@@ -52,7 +53,7 @@ pipeline {
                     docker stop target-app || rem
                     docker rm target-app || rem
                     docker run -d --name target-app --network ${DOCKER_NET} -p ${APP_PORT}:5000 devsecops-app:latest
-                    timeout /t 10
+                    timeout /t 15
                     docker run --rm --network ${DOCKER_NET} -v "%cd%":/zap/wrk:rw ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://target-app:5000 -r zap-report.html -J zap-report.json -I
                 """
             }
@@ -70,9 +71,5 @@ pipeline {
                 }
             }
         }
-    }
-    post {
-        success { echo 'Pipeline termine !' }
-        failure { echo 'Pipeline echoue.' }
     }
 }
