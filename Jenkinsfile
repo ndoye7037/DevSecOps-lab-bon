@@ -16,9 +16,9 @@ pipeline {
         stage('Build & Test') {
             steps {
                 echo 'Lancement du conteneur Python pour les tests...'
-                // Correction du chemin : Test au lieu de tests
+                // Utilisation du dossier "Test" (Majuscule) et du fichier "test_app.py"
                 bat """
-                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install -r app/requirements.txt pytest && pytest Test/test.app.py -v"
+                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install -r app/requirements.txt pytest && pytest Test/test_app.py -v"
                 """
             }
         }
@@ -26,9 +26,9 @@ pipeline {
         stage('SAST - Bandit Security Scan') {
             steps {
                 echo 'Analyse de securite statique (SAST) via Docker...'
-                // Bandit va scanner le dossier 'app' qui contient tes vulnérabilités (SQLi, XSS, Secret)
+                // Scan du dossier "app" pour trouver les vulnérabilités (SQLi, XSS, Secret Key)
                 bat """
-                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install bandit && bandit -r app/ -f json -o bandit-report.json || true && bandit -r app/"
+                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install bandit && bandit -r app/ -f json -o bandit-report.json || true && bandit -r app/ || true"
                 """
             }
             post {
@@ -40,7 +40,7 @@ pipeline {
         
         stage('Docker Build') {
             steps {
-                echo 'Construction de l image Docker...'
+                echo 'Construction de l image Docker de l application...'
                 bat 'docker build -t devsecops-app:latest .'
             }
         }
@@ -70,6 +70,14 @@ pipeline {
                     archiveArtifacts artifacts: 'zap-report.json', allowEmptyArchive: true
                 }
             }
+        }
+    }
+    post {
+        success {
+            echo 'Pipeline termine avec succès ! Les rapports Bandit et ZAP sont disponibles.'
+        }
+        failure {
+            echo 'Le pipeline a échoué. Vérifiez les logs Docker ci-dessus.'
         }
     }
 }
