@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
     environment {
@@ -17,7 +16,11 @@ pipeline {
        
         stage('Build & Test') {
             agent {
-                docker { image 'python:3.11-slim' }
+                docker { 
+                    image 'python:3.11-slim' 
+                   
+                    args '-u root:root --workdir /app'
+                }
             }
             steps {
                 echo 'Installation des dependances...'
@@ -29,7 +32,11 @@ pipeline {
         
         stage('SAST - Bandit Security Scan') {
             agent {
-                docker { image 'python:3.11-slim' }
+                docker { 
+                    image 'python:3.11-slim' 
+                    
+                    args '-u root:root --workdir /app'
+                }
             }
             steps {
                 echo 'Analyse de securite statique (SAST)...'
@@ -48,37 +55,28 @@ pipeline {
         stage('Docker Build') {
             steps {
                 echo 'Construction de l image Docker...'
-                sh 'docker build -t devsecops-app:latest .'
+                
+                bat 'docker build -t devsecops-app:latest .'
             }
         }
         
         stage('DAST - OWASP ZAP Pentest') {
             steps {
                 echo 'Lancement du pentest dynamique avec OWASP ZAP...'
-                sh '''
-                    docker run -d \
-                      --name target-app \
-                      --network ${DOCKER_NET} \
-                      -p ${APP_PORT}:5000 \
-                      devsecops-app:latest
-                    sleep 5
+                
+                bat '''
+                    docker network create devsecops-lab || rem
+                    docker run -d --name target-app --network devsecops-lab -p 5000:5000 devsecops-app:latest
+                    timeout /t 10
                 '''
-                sh '''
-                    docker run --rm \
-                      --network ${DOCKER_NET} \
-                      -v $(pwd):/zap/wrk \
-                      ghcr.io/zaproxy/zaproxy:stable \
-                      zap-baseline.py \
-                        -t http://target-app:5000 \
-                        -r zap-report.html \
-                        -J zap-report.json \
-                        -I
+                bat '''
+                    docker run --rm --network devsecops-lab -v "%cd%":/zap/wrk:rw ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://target-app:5000 -r zap-report.html -J zap-report.json -I
                 '''
             }
             post {
                 always {
-                    sh 'docker stop target-app || true'
-                    sh 'docker rm target-app || true'
+                    bat 'docker stop target-app || rem'
+                    bat 'docker rm target-app || rem'
                     publishHTML([
                         allowMissing: true,
                         reportDir: '.',
