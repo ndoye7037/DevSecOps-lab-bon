@@ -15,33 +15,24 @@ pipeline {
        
         stage('Build & Test') {
             steps {
-                script {
-                    // Utilisation de Docker en mode "inside" pour contourner le bug de chemin Windows
-                    docker.image('python:3.11-slim').inside("-u root:root") {
-                        echo 'Installation des dependances...'
-                        sh 'pip install -r app/requirements.txt pytest'
-                        echo 'Execution des tests unitaires...'
-                        sh 'pytest tests/ -v'
-                    }
-                }
+                echo 'Lancement du conteneur Python pour les tests...'
+                // On utilise bat 'docker run' au lieu du plugin agent docker qui bugue
+                bat """
+                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install -r app/requirements.txt pytest && pytest tests/ -v"
+                """
             }
         }
         
         stage('SAST - Bandit Security Scan') {
             steps {
-                script {
-                    docker.image('python:3.11-slim').inside("-u root:root") {
-                        echo 'Analyse de securite statique (SAST)...'
-                        sh 'pip install bandit'
-                        sh 'bandit -r app/ -f json -o bandit-report.json || true'
-                        sh 'bandit -r app/ || true'
-                    }
-                }
+                echo 'Analyse de securite statique (SAST) via Docker...'
+                bat """
+                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install bandit && bandit -r app/ -f json -o bandit-report.json || true && bandit -r app/ || true"
+                """
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'bandit-report.json',
-                                     allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'bandit-report.json', allowEmptyArchive: true
                 }
             }
         }
@@ -62,8 +53,6 @@ pipeline {
                     docker rm target-app || rem
                     docker run -d --name target-app --network ${DOCKER_NET} -p ${APP_PORT}:5000 devsecops-app:latest
                     timeout /t 10
-                """
-                bat """
                     docker run --rm --network ${DOCKER_NET} -v "%cd%":/zap/wrk:rw ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://target-app:5000 -r zap-report.html -J zap-report.json -I
                 """
             }
@@ -77,18 +66,13 @@ pipeline {
                         reportFiles: 'zap-report.html',
                         reportName: 'ZAP Security Report'
                     ])
-                    archiveArtifacts artifacts: 'zap-report.json',
-                                     allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'zap-report.json', allowEmptyArchive: true
                 }
             }
         }
     }
     post {
-        success {
-            echo 'Pipeline termine ! Consulte les rapports de securite.'
-        }
-        failure {
-            echo 'Pipeline echoue. Regarde les logs pour plus de details.'
-        }
+        success { echo 'Pipeline termine !' }
+        failure { echo 'Pipeline echoue.' }
     }
 }
