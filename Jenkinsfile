@@ -16,9 +16,9 @@ pipeline {
         stage('Build & Test') {
             steps {
                 echo 'Lancement du conteneur Python pour les tests...'
-                // Utilisation du dossier "Test" (Majuscule) et du fichier "test_app.py"
+                // On lance pytest sans chemin : il va scanner tout seul le projet
                 bat """
-                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install -r app/requirements.txt pytest && pytest Test/test_app.py -v"
+                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install -r app/requirements.txt pytest && pytest"
                 """
             }
         }
@@ -74,10 +74,10 @@ pipeline {
     }
     post {
         success {
-            echo 'Pipeline termine avec succès ! Les rapports Bandit et ZAP sont disponibles.'
+            echo 'Pipeline termine avec succes ! Verifie les rapports Bandit et ZAP.'
         }
         failure {
-            echo 'Le pipeline a échoué. Vérifiez les logs Docker ci-dessus.'
+            echo 'Le pipeline a echoue. Verifie les logs de l etape en rouge.'
         }
     }
 }
