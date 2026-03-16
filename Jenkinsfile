@@ -16,8 +16,6 @@ pipeline {
         stage('Build & Test') {
             steps {
                 echo 'Lancement des tests unitaires...'
-                // On installe les dépendances et on force l'exécution du fichier de test spécifique
-                // J'ajoute || true pour que le pipeline continue même si un test échoue (important pour voir Bandit ensuite)
                 bat """
                     docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install -r app/requirements.txt pytest && pytest Test/*.py -v || pytest *.py -v || true"
                 """
@@ -61,13 +59,8 @@ pipeline {
                 always {
                     bat 'docker stop target-app || rem'
                     bat 'docker rm target-app || rem'
-                    publishHTML([
-                        allowMissing: true,
-                        reportDir: '.',
-                        reportFiles: 'zap-report.html',
-                        reportName: 'ZAP Security Report'
-                    ])
-                    archiveArtifacts artifacts: 'zap-report.json', allowEmptyArchive: true
+                    // On remplace publishHTML par archiveArtifacts qui est disponible par défaut
+                    archiveArtifacts artifacts: 'zap-report.html, zap-report.json', allowEmptyArchive: true
                 }
             }
         }
