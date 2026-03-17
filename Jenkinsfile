@@ -15,6 +15,7 @@ pipeline {
         stage('Build & Test') {
             steps {
                 echo 'Lancement des tests unitaires...'
+                // Scanne automatiquement les dossiers pour trouver les tests
                 bat """
                     docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install -r app/requirements.txt pytest && pytest Test/*.py -v || pytest *.py -v || true"
                 """
@@ -24,6 +25,7 @@ pipeline {
         stage('SAST - Bandit Security Scan') {
             steps {
                 echo 'Analyse de securite Bandit (SAST)...'
+                // Genere le rapport JSON necessaire pour la Quality Gate
                 bat """
                     docker run --rm -v "%cd%":/app -w /app python:3.11-slim bash -c "pip install bandit && bandit -r app/ -f json -o bandit-report.json || true && bandit -r app/ || true"
                 """
@@ -37,31 +39,17 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
-                echo 'Verification des seuils de securite (Quality Gate)...'
-                // Ce script Python analyse le JSON et check si MEDIUM > 4
+                echo 'Verification des seuils de securite (Medium <= 4)...'
+                // Utilise le fichier externe check_quality.py pour analyser le rapport
                 bat """
-                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim python -c "
-import json
-try:
-    with open('bandit-report.json') as f:
-        data = json.load(f)
-        medium_count = sum(1 for issue in data['results'] if issue['issue_severity'] == 'MEDIUM')
-        print(f'Nombre d erreurs MEDIUM : {medium_count}')
-        if medium_count > 4:
-            print('ERREUR : Trop d erreurs de niveau MEDIUM (> 4). Echec de la Quality Gate.')
-            exit(1)
-        print('Quality Gate PASSEE avec succes.')
-except Exception as e:
-    print(f'Erreur lors de l analyse du rapport : {e}')
-    exit(1)
-"
+                    docker run --rm -v "%cd%":/app -w /app python:3.11-slim python check_quality.py
                 """
             }
         }
         
         stage('Docker Build') {
             steps {
-                echo 'Construction de l image Docker finale...'
+                echo 'Construction de l image Docker de l application...'
                 bat 'docker build -t devsecops-app:latest .'
             }
         }
@@ -82,9 +70,18 @@ except Exception as e:
                 always {
                     bat 'docker stop target-app || rem'
                     bat 'docker rm target-app || rem'
+                    // Archive les rapports pour consultation directe sur Jenkins
                     archiveArtifacts artifacts: 'zap-report.html, zap-report.json', allowEmptyArchive: true
                 }
             }
+        }
+    }
+    post {
+        success {
+            echo 'Pipeline termine avec succes !'
+        }
+        failure {
+            echo 'Le pipeline a echoue. Verifiez les logs de l etape en rouge.'
         }
     }
 }
